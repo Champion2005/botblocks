@@ -29,7 +29,7 @@ export default function App() {
         initialized = true;
 
         try {
-            await init('/sim_bg.wasm');
+            await init('https://raw.githubusercontent.com/B44ken/botblock/refs/heads/main/web/public/sim_bg.wasm');
             (window as any).wasm_mock_http_request = mock_http_request;
             
             const pyodide = await (window as any).loadPyodide();
@@ -101,31 +101,29 @@ export default function App() {
       </div>
     </main>
 
-    <section style={{ maxWidth: '1200px', margin: '2rem auto', padding: '0 1rem', color: '#aaa', fontFamily: 'sans-serif', lineHeight: '1.5' }}>
-      <h2 style={{ color: '#eee', marginBottom: '1rem', borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>BotBlock API Reference</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '2rem' }}>
-        <div>
-          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '0.5rem' }}><code>SimWorld</code></h3>
-          <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>The main simulation environment.</p>
-           <ul style={{ fontSize: '0.85rem', paddingLeft: '1.2rem' }}>
-              <li style={{ marginBottom: '0.3rem' }}><code>simulator.add(robot)</code><br/>Adds a <code>SimRobot</code> instance to the active world.</li>
-           </ul>
-        </div>
-        <div>
-          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '0.5rem' }}><code>SimRobot</code></h3>
-          <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>A simulated robot chassis.</p>
-           <ul style={{ fontSize: '0.85rem', paddingLeft: '1.2rem' }}>
-              <li style={{ marginBottom: '0.3rem' }}><code>bot.core.set(slot, part)</code><br/>Attaches a part to the chassis. Valid slots currently include <code>"left"</code> and <code>"right"</code> for the drive wheels. Returns the attached part.</li>
-           </ul>
-        </div>
-        <div>
-          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '0.5rem' }}><code>Motor</code></h3>
-          <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>A drive motor.</p>
-           <ul style={{ fontSize: '0.85rem', paddingLeft: '1.2rem' }}>
-              <li style={{ marginBottom: '0.3rem' }}><code>motor.set_speed(speed: float)</code><br/>Sets motor target speed (-1.0 to 1.0).</li>
-              <li style={{ marginBottom: '0.3rem' }}><code>motor.stop()</code><br/>Immediately stops the motor (sets speed to 0).</li>
-           </ul>
-        </div>
+    <section style={{ maxWidth: '1000px', margin: '0 auto' }}>
+      <h2 style={{marginBottom: '0'}}>botblock API reference</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', fontFamily: 'monospace' }}>
+          <code>
+            <h3>block.SimWorld</h3>
+            # add a robot <br />
+            SimWorld.add(robot) 
+          </code>
+          <code>
+            <h3>block.SimRobot</h3>
+            # attach a motor: core has left/right slots <br />
+            SimRobot.core.set('left', Motor())
+          </code>
+          <code>
+            <h3>block.Motor</h3>
+            # set speed <br />
+            Motor.set_speed(1.0)
+          </code>
+          <code>
+            <h3>block.Camera</h3>
+            # snap a picture and save <br />
+            Mamera.snap('savepath.png')
+          </code>
       </div>
     </section>
   </>

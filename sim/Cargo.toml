@@ -14,3 +14,10 @@ wasm-bindgen = "0.2.113"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
+
+[profile.release]
+opt-level = 'z'     # Optimize for size
+lto = true          # Enable Link-Time Optimization
+codegen-units = 1   # Reduce parallel code generation units to increase optimization
+panic = "abort"     # Remove panic unwinding to save size
+strip = "debuginfo" # Strip debug info
