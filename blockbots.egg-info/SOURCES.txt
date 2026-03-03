@@ -1,0 +1,8 @@
+pyproject.toml
+blockbots/__init__.py
+blockbots/cv.py
+blockbots.egg-info/PKG-INFO
+blockbots.egg-info/SOURCES.txt
+blockbots.egg-info/dependency_links.txt
+blockbots.egg-info/requires.txt
+blockbots.egg-info/top_level.txt

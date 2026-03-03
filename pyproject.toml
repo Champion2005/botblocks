@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blockbots"
+version = "0.1.0"
+description = "blockbots driver"
+authors = [{ name = "brad", email = "spam@boratto.ca" }]
+dependencies = [ "requests", "ultralytics", "Pillow" ]
+
+[tool.setuptools]
+packages = ["blockbots"]

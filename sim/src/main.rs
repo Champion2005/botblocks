@@ -1,25 +1,30 @@
 mod server;
 
 use bevy::prelude::*;
+use avian3d::prelude::*;
 use server::SharedState;
 
 /// Marker component identifying a robot entity.
 #[derive(Component)]
-struct Robot {
-    id: String,
-}
+struct Robot { id: String }
 
-/// Motor component (attached to the robot entity).
-#[derive(Component)]
+/// Motor speed targets (attached to the robot entity).
+#[derive(Component, Clone, Copy, Default)]
 struct Motors {
     left: f32,
     right: f32,
+    bottom: f32,
 }
 
-#[bevy_main]
-fn main() {
+/// Marker on wheel entities linking back to the robot and its slot.
+#[derive(Component)]
+struct Wheel { robot: Entity, slot: String }
+
+fn main() { app_main() }
+
+pub fn app_main() {
     let state = SharedState::default();
-    
+
     #[cfg(not(target_arch = "wasm32"))]
     server::http::start_server(state.clone());
 
@@ -29,18 +34,17 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
-            // we probably want to attach to a specific canvas on web
             canvas: Some("#bevy-canvas".into()),
             fit_canvas_to_parent: true,
             ..default()
         }),
         ..default()
     }))
+    .add_plugins(PhysicsPlugins::default())
     .insert_resource(state)
-    .init_resource::<PendingParts>()
-    .init_resource::<PendingMotorCmds>()
     .add_systems(Startup, setup_scene)
-    .add_systems(Update, (process_spawns, process_part_attachments, process_motor_cmds, drive_robots));
+    .add_systems(Update, process_api_commands)
+    .add_systems(Update, apply_motor_torques);
 
     #[cfg(not(target_arch = "wasm32"))]
     screenshot::register(&mut app);
@@ -53,12 +57,15 @@ fn setup_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
     // ground
     commands.spawn((
         Mesh3d(meshes.add(Circle::new(20.0))),
         MeshMaterial3d(materials.add(Color::srgb(0.55, 0.62, 0.7))),
         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+        RigidBody::Static,
+        Collider::half_space(Vec3::Y),
     ));
     // light
     commands.spawn((
@@ -70,150 +77,156 @@ fn setup_scene(
         Camera3d::default(),
         Transform::from_xyz(0.0, 12.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
-}
-
-/// Drain spawn commands from the HTTP queue and spawn robot entities.
-fn process_spawns(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    state: Res<SharedState>,
-) {
-    let spawns: Vec<_> = {
-        let mut q = state.queue.lock().unwrap();
-        q.spawns.drain(..).collect()
+    // hotdog — textured plane facing the robot, randomised x position (native only)
+    #[cfg(not(target_arch = "wasm32"))]
+    let hotdog_x = {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos();
+        ((nanos % 1000) as f32 / 1000.0 - 0.5) * 3.0 // −1.5 … +1.5
     };
-    for spawn in spawns {
-        println!("Spawning robot: {}", spawn.id);
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(1.0, 0.5, 1.5))),
-            MeshMaterial3d(materials.add(Color::srgb(0.9, 0.9, 0.92))),
-            Transform::from_xyz(0.0, 0.25, 0.0),
-            Robot { id: spawn.id },
-            Motors { left: 0.0, right: 0.0 },
-        ));
-    }
+    #[cfg(target_arch = "wasm32")]
+    let (hotdog_x, hotdog_z) = (0.0, -3.5); // Fixed central position for web demo
+    #[cfg(not(target_arch = "wasm32"))]
+    let hotdog_z = -4.0;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    let hotdog_mat = materials.add(StandardMaterial {
+        base_color_texture: Some(asset_server.load("hotdog.png")),
+        unlit: true,
+        ..default()
+    });
+    #[cfg(target_arch = "wasm32")]
+    let hotdog_mat = materials.add(Color::srgb(0.85, 0.2, 0.1));
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(2.0, 1.3, 0.1))),
+        MeshMaterial3d(hotdog_mat),
+        Transform::from_xyz(hotdog_x, 1.0, hotdog_z),
+    ));
 }
 
-/// Buffered part attachments waiting for their robot to spawn.
-#[derive(Resource, Default)]
-struct PendingParts(Vec<(server::PartAttachment, u32)>);
+use std::collections::HashMap;
+use server::BotCommand;
 
-const PART_ATTACH_TIMEOUT_FRAMES: u32 = 300; // ~5 seconds at 60fps
+struct RobotState {
+    entity: Entity,
+    motors: Motors,
+}
 
-/// Drain part attachments and spawn child meshes on the robot.
-fn process_part_attachments(
+/// Drains command queue in-order, using shadow state to apply ECS modifications immediately.
+fn process_api_commands(
     mut commands: Commands,
+    state: Res<SharedState>,
+    mut robots: Local<HashMap<String, RobotState>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    state: Res<SharedState>,
-    robots: Query<(Entity, &Robot)>,
-    mut pending: ResMut<PendingParts>,
 ) {
-    {
-        let mut q = state.queue.lock().unwrap();
-        for p in q.part_attachments.drain(..) {
-            pending.0.push((p, 0));
-        }
-    }
-    let mut still_pending = Vec::new();
-    for (part, age) in pending.0.drain(..) {
-        if age >= PART_ATTACH_TIMEOUT_FRAMES {
-            eprintln!("Part attachment timed out: robot={} slot={}", part.robot_id, part.slot);
-            continue;
-        }
-        let Some((entity, _)) = robots.iter().find(|(_, r)| r.id == part.robot_id) else {
-            still_pending.push((part, age + 1));
-            continue;
-        };
-        let (mesh, material, offset, rotation) = match (part.part_type.as_str(), part.slot.as_str()) {
-            ("Motor", "left") => (
-                meshes.add(Cylinder::new(0.2, 0.3)),
-                materials.add(Color::srgb(0.85, 0.35, 0.15)),
-                Vec3::new(-0.65, 0.0, 0.0),
-                Quat::from_rotation_z(std::f32::consts::FRAC_PI_2),
-            ),
-            ("Motor", "right") => (
-                meshes.add(Cylinder::new(0.2, 0.3)),
-                materials.add(Color::srgb(0.85, 0.35, 0.15)),
-                Vec3::new(0.65, 0.0, 0.0),
-                Quat::from_rotation_z(std::f32::consts::FRAC_PI_2),
-            ),
-            ("Camera", _) => (
-                meshes.add(Cuboid::new(0.25, 0.2, 0.2)),
-                materials.add(Color::srgb(0.15, 0.15, 0.18)),
-                Vec3::new(0.0, 0.35, -0.85),
-                Quat::IDENTITY,
-            ),
-            _ => continue,
-        };
-        let is_camera = part.part_type == "Camera";
-        let slot_name = part.slot.clone();
-        let mut child_cmd = commands.spawn((
-            Mesh3d(mesh),
-            MeshMaterial3d(material),
-            Transform::from_translation(offset).with_rotation(rotation),
-        ));
-        #[cfg(not(target_arch = "wasm32"))]
-        if is_camera {
-            child_cmd.insert(screenshot::CameraPart { slot: slot_name });
-        }
-        let child = child_cmd.id();
-        commands.entity(entity).add_child(child);
-    }
-    pending.0 = still_pending;
-}
+    let cmds: Vec<_> = {
+        let mut q = state.cmds.lock().unwrap();
+        q.drain(..).collect()
+    };
 
-/// Buffered motor commands waiting for their robot to spawn.
-#[derive(Resource, Default)]
-struct PendingMotorCmds(Vec<(server::MotorCommand, u32)>);
-
-/// Drain motor commands and apply them to the matching robot.
-fn process_motor_cmds(
-    state: Res<SharedState>, 
-    mut query: Query<(&Robot, &mut Motors)>,
-    mut pending: ResMut<PendingMotorCmds>,
-) {
-    {
-        let mut q = state.queue.lock().unwrap();
-        for cmd in q.motor_cmds.drain(..) {
-            pending.0.push((cmd, 0));
-        }
-    }
-    let mut still_pending = Vec::new();
-    for (cmd, age) in pending.0.drain(..) {
-        if age >= PART_ATTACH_TIMEOUT_FRAMES {
-            bevy::log::warn!("Motor command timed out for unknown robot: {}", cmd.robot_id);
-            continue;
-        }
-        let mut found = false;
-        for (robot, mut motors) in &mut query {
-            if robot.id == cmd.robot_id {
-                match cmd.slot.as_str() {
-                    "left" => motors.left = cmd.speed,
-                    "right" => motors.right = cmd.speed,
+    for cmd in cmds {
+        match cmd {
+            BotCommand::RobotCreate { id } => {
+                let id = id.expect("ID must be generated before getting here");
+                println!("Spawning robot: {}", id);
+                let motors = Motors::default();
+                let entity = commands.spawn((
+                    Mesh3d(meshes.add(Cuboid::new(1.0, 0.5, 1.5))),
+                    MeshMaterial3d(materials.add(Color::srgb(0.9, 0.9, 0.92))),
+                    Transform::from_xyz(0.0, 0.5, 0.0),
+                    Robot { id: id.clone() },
+                    motors,
+                    RigidBody::Dynamic,
+                    Collider::cuboid(1.0, 0.5, 1.5),
+                    GravityScale(0.0),
+                )).id();
+                robots.insert(id, RobotState { entity, motors });
+            }
+            BotCommand::PartAttach { robot_id, slot, part_type } => {
+                let Some(rstate) = robots.get(&robot_id) else {
+                    bevy::log::warn!("Tried to attach part to unknown robot {}", robot_id);
+                    continue;
+                };
+                if part_type == "Motor" {
+                    // Wheel config: (offset from robot, joint axis in local space)
+                    let (offset, joint_axis) = match slot.as_str() {
+                        "left"   => (Vec3::new(-0.65, 0.0, 0.0), Vec3::X),
+                        "right"  => (Vec3::new( 0.65, 0.0, 0.0), Vec3::X),
+                        "bottom" => (Vec3::new( 0.0,  0.0, 1.0), Vec3::Z),
+                        _ => continue,
+                    };
+                    let wheel_pos = Vec3::new(0.0, 0.5, 0.0) + offset;
+                    let wheel = commands.spawn((
+                        Mesh3d(meshes.add(Cylinder::new(0.2, 0.3))),
+                        MeshMaterial3d(materials.add(Color::srgb(0.85, 0.35, 0.15))),
+                        Transform::from_translation(wheel_pos),
+                        RigidBody::Dynamic,
+                        Collider::cylinder(0.2, 0.3),
+                        GravityScale(0.0),
+                        Wheel { robot: rstate.entity, slot: slot.clone() },
+                    )).id();
+                    // Spawn the joint as a separate entity referencing both bodies
+                    commands.spawn(
+                        RevoluteJoint::new(rstate.entity, wheel)
+                            .with_local_anchor1(offset)
+                            .with_local_anchor2(Vec3::ZERO)
+                            .with_hinge_axis(joint_axis),
+                    );
+                } else if part_type == "Camera" {
+                    let slot_name = slot.clone();
+                    let offset = Vec3::new(0.0, 0.35, -0.85);
+                    let mut child_cmd = commands.spawn((
+                        Mesh3d(meshes.add(Cuboid::new(0.25, 0.2, 0.2))),
+                        MeshMaterial3d(materials.add(Color::srgb(0.15, 0.15, 0.18))),
+                        Transform::from_translation(offset),
+                    ));
+                    #[cfg(not(target_arch = "wasm32"))]
+                    child_cmd.insert(screenshot::CameraPart { slot: slot_name });
+                    let child = child_cmd.id();
+                    commands.entity(rstate.entity).add_child(child);
+                }
+            }
+            BotCommand::PartCmd { robot_id, slot, action, speed } => {
+                let Some(state) = robots.get_mut(&robot_id) else {
+                    bevy::log::warn!("Motor command for unknown robot: {}", robot_id);
+                    continue;
+                };
+                let speed = speed.unwrap_or(0.0);
+                match action.as_str() {
+                    "set_speed" => match slot.as_str() {
+                        "left" => state.motors.left = speed,
+                        "right" => state.motors.right = speed,
+                        "bottom" => state.motors.bottom = speed,
+                        _ => {}
+                    },
+                    "stop" => match slot.as_str() {
+                        "left" => state.motors.left = 0.0,
+                        "right" => state.motors.right = 0.0,
+                        "bottom" => state.motors.bottom = 0.0,
+                        _ => {}
+                    },
                     _ => {}
                 }
-                found = true;
+                // Overwrite the actual ECS component
+                commands.entity(state.entity).insert(state.motors);
             }
-        }
-        if !found {
-            still_pending.push((cmd, age + 1));
+            BotCommand::WorldReset => {
+                println!("Resetting simulation state");
+                for state in robots.values() {
+                    commands.entity(state.entity).despawn();
+                }
+                robots.clear();
+            }
+            _ => {}
         }
     }
-    pending.0 = still_pending;
 }
 
-/// Simple differential drive: two motors → forward speed + turning.
-fn drive_robots(time: Res<Time>, mut query: Query<(&Motors, &mut Transform)>) {
-    for (motors, mut tf) in &mut query {
-        let forward = (motors.left + motors.right) / 2.0;
-        let turn = (motors.right - motors.left) * 1.5;
-
-        let dt = time.delta_secs();
-        tf.rotate_y(turn * dt);
-        let dir = tf.forward();
-        tf.translation += dir * forward * 3.0 * dt;
+fn apply_motor_torques(mut robots: Query<(&Motors, &mut AngularVelocity, &mut LinearVelocity), With<Robot>>) {
+    for (motors, mut ang_vel, mut lin_vel) in &mut robots {
+        ang_vel.0 = Vec3::new(0.0, -motors.bottom, 0.0);
+        lin_vel.0 = Vec3::ZERO;
     }
 }
 
@@ -228,26 +241,17 @@ mod screenshot {
 
     /// Marker for camera part children, storing the slot name.
     #[derive(Component)]
-    pub struct CameraPart {
-        pub slot: String,
-    }
+    pub struct CameraPart { pub slot: String, }
 
     /// Queued world screenshot requests waiting for a frame to render.
     #[derive(Resource, Default)]
-    struct PendingWorldScreenshots {
-        entries: Vec<PendingShot>,
-    }
+    struct PendingWorldScreenshots { entries: Vec<PendingShot>, }
 
-    struct PendingShot {
-        frames_remaining: u32,
-        tx: tokio::sync::oneshot::Sender<Vec<u8>>,
-    }
+    struct PendingShot { frames_remaining: u32, tx: tokio::sync::oneshot::Sender<Vec<u8>> }
 
     /// Queued camera snap requests waiting for their offscreen render.
     #[derive(Resource, Default)]
-    struct PendingCameraSnaps {
-        entries: Vec<PendingCameraShot>,
-    }
+    struct PendingCameraSnaps { entries: Vec<PendingCameraShot>, }
 
     struct PendingCameraShot {
         frames_remaining: u32,
@@ -256,25 +260,16 @@ mod screenshot {
         image_handle: Handle<Image>,
     }
 
-    fn encode_and_send(image: Image, tx: tokio::sync::oneshot::Sender<Vec<u8>>) {
-        let pool = AsyncComputeTaskPool::get();
-        pool.spawn(async move {
-            match image.try_into_dynamic() {
-                Ok(dyn_img) => {
-                    let mut buf = std::io::Cursor::new(Vec::new());
-                    if dyn_img
-                        .write_to(&mut buf, image::ImageFormat::Png)
-                        .is_ok()
-                    {
-                        let _ = tx.send(buf.into_inner());
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Screenshot encode error: {e:?}");
-                }
-            }
-        })
-        .detach();
+    fn encode_and_send(image: bevy::image::Image, tx: tokio::sync::oneshot::Sender<Vec<u8>>) {
+        AsyncComputeTaskPool::get().spawn(async move {
+            let Ok(dyn_img) = image.try_into_dynamic() else {
+                let _ = tx.send(Vec::new());
+                return;
+            };
+            let mut buf = std::io::Cursor::new(Vec::new());
+            dyn_img.write_to(&mut buf, image::ImageFormat::Png).expect("failed to write img");
+            let _ = tx.send(buf.into_inner());
+        }).detach();
     }
 
     /// Drain world screenshot requests from shared state.
@@ -284,10 +279,7 @@ mod screenshot {
     ) {
         let txs: Vec<_> = state.screenshot_tx.lock().unwrap().drain(..).collect();
         for tx in txs {
-            pending.entries.push(PendingShot {
-                frames_remaining: 2,
-                tx,
-            });
+            pending.entries.push(PendingShot { frames_remaining: 2, tx });
         }
     }
 
@@ -382,7 +374,7 @@ mod screenshot {
         }
     }
 
-    /// Process pending camera snaps: count down, capture offscreen, despawn camera.
+    /// Process pending camera snaps: count down, screenshot, then despawn camera in callback.
     fn process_camera_snaps(
         mut commands: Commands,
         mut pending: ResMut<PendingCameraSnaps>,
@@ -398,11 +390,12 @@ mod screenshot {
             let cam_entity = entry.camera_entity;
             commands
                 .spawn(Screenshot::image(entry.image_handle))
-                .observe(move |event: On<ScreenshotCaptured>| {
-                    let Some(tx) = tx.lock().unwrap().take() else { return };
-                    encode_and_send(event.image.clone(), tx);
+                .observe(move |event: On<ScreenshotCaptured>, mut commands: Commands| {
+                    if let Some(tx) = tx.lock().unwrap().take() {
+                        encode_and_send(event.image.clone(), tx);
+                    }
+                    commands.entity(cam_entity).despawn();
                 });
-            commands.entity(cam_entity).despawn();
         }
         pending.entries = still_pending;
     }

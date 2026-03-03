@@ -1,4 +1,4 @@
-import sys, js
+import sys, js, json
 
 class Part:
     def __init__(self):
@@ -11,8 +11,14 @@ class Part:
 
     def _cmd(self, action, **kwargs):
         import json
-        payload = json.dumps({"action": action, **kwargs})
-        js.wasm_mock_http_request("POST", f"/robots/{self._robot_id}/parts/{self._slot}/cmd", payload)
+        payload = json.dumps({
+            "type": "part_cmd",
+            "robot_id": self._robot_id,
+            "slot": self._slot,
+            "action": action, 
+            **kwargs
+        })
+        js.wasm_mock_http_request("POST", "/v1", payload)
 
 class Motor(Part):
     def set_speed(self, speed: float):
@@ -29,6 +35,18 @@ class Camera(Part):
     def snap(self):
         return None
 
+class cv:
+    class YOLO:
+        def __init__(self, url=None):
+            self.url = url
+            self._web_yolo = js.window.WebYOLO.new(url)
+
+        def find(self, label, image):
+            box = self._web_yolo.find(label, image)
+            if box:
+                return type('Box', (), {'x': box.x, 'y': box.y, 'w': box.w, 'h': box.h})()
+            return None
+
 class Core:
     def __init__(self, robot_id):
         self._robot_id = robot_id
@@ -38,7 +56,13 @@ class Core:
         import json
         part._bind(self._robot_id, slot)
         self._parts[slot] = part
-        js.wasm_mock_http_request("POST", f"/robots/{self._robot_id}/parts", json.dumps({"slot": slot, "type": part.__class__.__name__}))
+        payload = json.dumps({
+            "type": "part_attach",
+            "robot_id": self._robot_id,
+            "slot": slot,
+            "part_type": part.__class__.__name__
+        })
+        js.wasm_mock_http_request("POST", "/v1", payload)
         return part
 
     def get(self, slot: str):
@@ -46,7 +70,8 @@ class Core:
 
 class SimWorld:
     def __init__(self):
-        pass
+        import json
+        js.wasm_mock_http_request("POST", "/v1", json.dumps({"type": "world_reset"}))
 
     def add(self, robot):
         pass
@@ -59,13 +84,21 @@ class SimWorld:
 
     def state(self):
         import json
-        res = js.wasm_mock_http_request("GET", "/world/state", "")
+        res = js.wasm_mock_http_request("POST", "/v1", json.dumps({"type": "world_state"}))
         return json.loads(res)
 
 class SimRobot:
     def __init__(self):
         import json
-        res = js.wasm_mock_http_request("POST", "/robots", "")
+        res = js.wasm_mock_http_request("POST", "/v1", json.dumps({"type": "robot_create"}))
         data = json.loads(res)
         self.id = data["id"]
         self.core = Core(self.id)
+        self._ticks = 0
+
+    def set(self, slot: str, part: Part) -> Part:
+        return self.core.set(slot, part)
+
+    def ok(self):
+        self._ticks += 1
+        return self._ticks < 100

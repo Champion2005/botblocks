@@ -2,3 +2,4 @@ web/node_modules
 sim/target
 python/__pycache__
 block/__pycache__
+blockbots/blockbots.egg-info
