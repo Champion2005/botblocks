@@ -3,38 +3,26 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Robot } from './Robot'
 import { Vision } from './Vision'
 
-const DT_CAP = 0.05
-
-function dispose(obj: THREE.Object3D) {
-  obj.traverse((c: any) => {
-    if (c.geometry) c.geometry.dispose?.()
-    if (c.material)
-      Array.isArray(c.material)
-        ? c.material.forEach((m: any) => m.dispose?.())
-        : c.material.dispose?.()
-  })
-}
+let nextRobotId = 1
+let nextCamId = 1
 
 export class World {
-  private robots = new Map<number, Robot>()
-  private objects = new Map<number, THREE.Object3D>()
-  private loader = new GLTFLoader()
-  private nextId = 1
-  vision = new Vision()
+  robots = new Map<number, Robot>()
+  vision: Vision
+  private scene: THREE.Scene
+  private renderer: THREE.WebGLRenderer
 
-  private renderer: THREE.WebGLRenderer | null = null
-
-  constructor(private scene: THREE.Scene) {}
-
-  setRenderer(renderer: THREE.WebGLRenderer) {
+  constructor(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
+    this.scene = scene
     this.renderer = renderer
+    this.vision = new Vision()
   }
 
   addRobot() {
-    const id = this.nextId++
+    const id = nextRobotId++
     const robot = new Robot(id)
-    this.scene.add(robot.group)
     this.robots.set(id, robot)
+    this.scene.add(robot.group)
     return id
   }
 
@@ -43,64 +31,34 @@ export class World {
   }
 
   addCamera(robotId: number) {
-    const id = this.nextId++
+    const id = nextCamId++
     this.vision.addCamera(id, robotId)
     return id
   }
 
-  snap(camId = 0) {
-    if (!this.renderer) return undefined
+  snap(camId: number) {
     return this.vision.snap(camId, this.robots, this.renderer, this.scene)
   }
 
-  async initYOLO(model?: string) {
-    await this.vision.initYOLO(model)
-  }
-
-  async YOLO(img?: any) {
-    return this.vision.YOLO(img)
-  }
-
-  runYOLO(img: any, callback: (results: any) => void) {
-    this.vision.runYOLO(img, callback)
-  }
-
   async addBurger() {
-    const x = 4 * Math.random(), z = 4 * Math.random()
-    try {
-      const gltf = await new Promise<any>((res, rej) =>
-        this.loader.load('/burger.glb', res, undefined, rej),
-      )
-      const node = gltf.scene.clone(true)
-      node.scale.setScalar(0.3)
-      node.position.set(x, 0, z)
-      this.scene.add(node)
-      const id = this.nextId++
-      this.objects.set(id, node)
-      return id
-    } catch (e) {
-      console.warn('burger load failed', e)
-      return undefined
-    }
+    const loader = new GLTFLoader()
+    const gltf = await loader.loadAsync('burger.glb')
+    const model = gltf.scene
+    model.position.set(3 + Math.random() * 2 - 1, 0, Math.random() * 2 - 1)
+    model.traverse(n => { if (n instanceof THREE.Mesh) n.castShadow = true })
+    this.scene.add(model)
+    return model
   }
 
   step(dt: number) {
-    const t = Math.min(dt, DT_CAP)
-    for (const r of this.robots.values()) r.step(t)
+    for (const robot of this.robots.values()) robot.step(dt)
   }
 
   reset() {
-    for (const r of this.robots.values()) {
-      this.scene.remove(r.group)
-      dispose(r.group)
-    }
-    for (const obj of this.objects.values()) {
-      this.scene.remove(obj)
-      dispose(obj)
-    }
+    for (const robot of this.robots.values()) this.scene.remove(robot.group)
     this.robots.clear()
-    this.objects.clear()
     this.vision.reset()
-    this.nextId = 1
+    nextRobotId = 1
+    nextCamId = 1
   }
 }

@@ -4,8 +4,9 @@ bot = bk.Robot('SimpleCar')
 bot.attach('cam', bk.Camera())
 sim = bk.Simulator([bot, bk.TestBurger])
 
-yolo = bk.cv.YOLO('Xenova/yolos-tiny')
+yolo = bk.cv.YOLO()
 
-while bot.ok():
-    run = yolo(bot['cam'].snap())
-    bot.turn(run.find('hamburger').x - 0.5)
+def loop():
+    img = bot['cam'].snap()
+    res = yolo(img).find('burger')
+    bot.turn(res.x if res else 1)

@@ -1,29 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { App, Btn, Card, Col, Grid, Md, Muted, Row } from 'b44ui'
-import { loadMicroPython } from '@micropython/micropython-webassembly-pyscript'
+import { loadPyodide } from 'pyodide'
+import { setupPyodideFiles } from 'virtual:pyodide-files'
 import Editor from './Editor'
 import SimView from './SimView'
 import { Sim } from './sim'
 
-let mpPromise: ReturnType<typeof loadMicroPython> | null = null
-function getMicroPython() {
-  if (!mpPromise) mpPromise = loadMicroPython({ url: '/micropython.wasm' })
-  return mpPromise
+let raf: number | null = null
+let loopGeneration = 0
+function stopLoop() {
+  loopGeneration += 1
+  if(raf !== null) window.cancelAnimationFrame(raf)
+  raf = null
 }
 
-function makeBridge(sim: Sim) {
-  return {
-    addRobot: () => sim.addRobot(),
-    addBurger: () => sim.addBurger(),
-    addCamera: (robotId: number) => sim.addCamera(robotId),
-    setMotorSpeed: (robotId: number, side: 'left' | 'right', speed: number) => sim.setMotorSpeed(robotId, side, speed),
-    snap: (camId: number) => sim.snap(camId),
-    initYOLO: (model?: string) => sim.initYOLO(model),
-    runYOLO: (img: any, cb: any) => sim.runYOLO(img, cb),
-    start: () => sim.start(),
-    stop: () => sim.stop(),
-    ok: () => new Promise<boolean>(r => setTimeout(() => r(true), 0)),
-  }
+function crashOnPythonError(stage: string, err: unknown): never {
+  const error = err instanceof Error ? err : new Error(String(err))
+  console.error(`[demo] python error during ${stage}`, error)
+  stopLoop()
+  window.setTimeout(() => { throw error }, 0)
+  throw error
 }
 
 export default () => {
@@ -31,24 +27,27 @@ export default () => {
   const simRef = useRef<Sim | null>(null)
 
   useEffect(() => { fetch('demo.py').then(r => r.text()).then(setCode) }, [])
+  useEffect(() => () => stopLoop(), [])
 
   const restart = async () => {
     if (!simRef.current || !code) return
+    stopLoop()
     simRef.current.stop()
     simRef.current.reset()
 
-    const mp = await getMicroPython()
-    const bridge = makeBridge(simRef.current)
+    const pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/npm/pyodide@0.29.3/' })
+    await setupPyodideFiles(pyodide)
+    await pyodide.runPythonAsync("import sys\nif './public' not in sys.path:\n    sys.path.insert(0, './public')")
+    pyodide.registerJsModule('_bridge', simRef.current)
+    await pyodide.runPythonAsync(code).catch(err => crashOnPythonError('boot', err))
 
-    mp.registerJsModule('_bridge', bridge)
-
-    const botblocks = await fetch('/botblocks.py').then(r => r.text())
-    try { mp.FS.mkdir('/lib') } catch {}
-    mp.FS.writeFile('/lib/botblocks.py', botblocks)
-
-    await mp.runPythonAsync(code).catch((err: any) => console.error(err))
+    const frame = async () => {
+      await pyodide.runPythonAsync('loop()')
+        .catch(err => crashOnPythonError('loop()', err))
+      raf = window.requestAnimationFrame(frame)
+    }
+    raf = window.requestAnimationFrame(frame)
   }
-
   return <App width={1000}>
     <Row align="start"> <Md># botblocks</Md> <Muted>is a very nice robotics platform</Muted> </Row>
 

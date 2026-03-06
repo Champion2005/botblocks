@@ -6,16 +6,15 @@ export class Sim {
   private world: World
   private stepCallback: (() => void) | null = null
 
-  scene: Renderer['scene']
-  camera: Renderer['camera']
+  scene!: Renderer['scene']
+  camera!: Renderer['camera']
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas, dt => {
       this.world.step(dt)
       this.stepCallback?.()
     })
-    this.world = new World(this.renderer.scene)
-    this.world.setRenderer(this.renderer.renderer)
+    this.world = new World(this.renderer.scene, this.renderer.renderer)
     this.scene = this.renderer.scene
     this.camera = this.renderer.camera
   }
@@ -28,9 +27,6 @@ export class Sim {
   addCamera(robotId: number) { return this.world.addCamera(robotId) }
   snap(camId = 0) { return this.world.snap(camId) }
   async addBurger() { return this.world.addBurger() }
-  async initYOLO(model?: string) { await this.world.initYOLO(model) }
-  async YOLO(img?: any) { return this.world.YOLO(img) }
-  runYOLO(img: any, callback: (results: any) => void) { this.world.runYOLO(img, callback) }
   setStepCallback(fn: () => void) { this.stepCallback = fn }
 
   // Renderer delegation
