@@ -19,7 +19,6 @@ function formatWorldState(sim: Sim, robotId: number): string {
   const ws = sim.getWorldState(robotId)
   if (!ws) return 'Error: robot not found'
   const { leftMotor, rightMotor } = ws.robot
-  const speed = (leftMotor + rightMotor) / 2
   const moving = Math.abs(leftMotor) > 0.01 || Math.abs(rightMotor) > 0.01
   const nav = sim.getNavStatus(robotId)
   let motionDesc: string

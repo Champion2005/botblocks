@@ -1,6 +1,6 @@
 # AI System
 
-The AI system gives robots LLM-powered brains that observe, reason, and act in the simulation. It supports OpenAI, Anthropic, and OpenRouter providers.
+The AI system gives robots LLM-powered brains that observe, reason, and act in the simulation. It uses [OpenRouter](https://openrouter.ai) as the sole active provider, giving access to 100+ models with a single API key.
 
 ## Provider Architecture
 
@@ -12,18 +12,15 @@ interface LLMProvider {
 }
 ```
 
-### Supported Providers
+### Active Provider
 
-| Provider | Endpoint | Key Header | Features |
-|----------|----------|------------|----------|
-| **OpenAI** | `/proxy/openai/v1/chat/completions` | `Authorization: Bearer` | Function calling, vision |
-| **Anthropic** | `/proxy/anthropic/v1/messages` | `x-api-key` | Tool use, vision, system as separate param |
-| **OpenRouter** | `https://openrouter.ai/api/v1/chat/completions` | `Authorization: Bearer` | 100+ models, OpenAI-compatible format |
+| Provider | Endpoint | Key Header |
+|----------|----------|------------|
+| **OpenRouter** | `https://openrouter.ai/api/v1/chat/completions` | `Authorization: Bearer` |
 
-Provider selection is automatic based on the model string:
-- Contains `/` or `:free` → OpenRouter
-- Starts with `claude` → Anthropic (falls back to OpenRouter)
-- Everything else → OpenAI (falls back to OpenRouter)
+All models (including `gpt-4o-mini`, `claude-*`, etc.) are routed through OpenRouter. Direct OpenAI and Anthropic providers are implemented but currently commented out in `src/ai/index.ts`.
+
+The default model is `openrouter/free` which selects a free model automatically.
 
 ## Agent Reasoning Loop
 

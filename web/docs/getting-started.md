@@ -8,7 +8,7 @@ botblocks is a browser-based robotics simulation platform. It runs a 3D simulato
 
 - A modern browser (Chrome, Edge, Firefox)
 - Node.js 18+ and npm (for local development)
-- An API key from OpenAI, Anthropic, or OpenRouter (only if using AI agents)
+- An [OpenRouter](https://openrouter.ai) API key (only if using AI agents; free tier available)
 
 ## Quick Start
 
@@ -23,7 +23,9 @@ Open the URL printed by Vite (usually `http://localhost:5173`).
 
 ## Your First Script
 
-The editor loads `demo_custom_ai.py` by default. To start simple, replace it with:
+If no API key is set, the editor defaults to `demo.py` (the Basic demo — no AI required). With a key saved, it defaults to `demo_ai.py`. You can switch between Basic, AI, and Custom AI demos using the buttons in the Editor tab header.
+
+The Basic demo:
 
 ```python
 import botblocks as bk
@@ -44,28 +46,33 @@ Click **restart** to run. The robot will spin until it detects the burger, then 
 
 ## Adding AI
 
-To give the robot an LLM brain instead of manual code:
+To give the robot an LLM brain:
 
-1. Enter your API key in the top bar (OpenAI, Anthropic, or OpenRouter).
-2. Click **save**.
-3. Use this script:
+1. Get a free API key from [openrouter.ai](https://openrouter.ai).
+2. Paste it into the **OpenRouter** key field and click **save**.
+3. Switch to the **AI** demo (or write your own):
 
 ```python
 import botblocks as bk
 
 bot = bk.Robot('SimpleCar')
 bot.attach('cam', bk.Camera())
+
 bk.Burger(x=3, z=2)
+bk.Burger(x=-3, z=2)
+bk.Burger(x=-3, z=-3)
+bk.Burger(x=3, z=-3)
 
 brain = bk.AI(bot,
-    goal="Find and navigate to the burger",
-    model="gpt-4o-mini")
+    goal="Visit only 2 burgers. They are at (3,2), (-3,2), (-3,-3), and (3,-3). "
+         "Use move_to to drive to each one in order. After visiting 2, call done.",
+    model="openrouter/free")
 
 async def loop():
     await brain.step()
 ```
 
-The AI agent will observe the world, reason about what to do, and navigate autonomously. Watch the AI Log panel below the simulator for real-time agent activity.
+The AI agent will observe the world, reason about what to do, and navigate autonomously. Watch the AI Log panel for real-time agent activity.
 
 ## Project Scripts
 

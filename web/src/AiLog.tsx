@@ -136,13 +136,13 @@ export default function AiLog({ simRef }: { simRef: React.MutableRefObject<Sim |
     if (el) el.scrollTop = el.scrollHeight
   }, [logs])
 
-  return <Card p={0} gap={0}>
+  return <Card p={0} gap={0} cn="bb-ailog">
     <Row p={2}>
       <D cn="text-sm font-semibold" grow>AI Log</D>
       <StatusBadge status={status} />
       <Muted cn="text-xs">{logs.length} entries</Muted>
     </Row>
-    <div ref={scrollRef} className="overflow-y-auto px-3 pb-2" style={{ maxHeight: 280 }}>
+    <div ref={scrollRef} className="overflow-y-auto px-3 pb-2" style={{ flex: 1, minHeight: 0 }}>
       {logs.length === 0
         ? <Muted cn="text-xs py-4 text-center block">No AI activity yet. Run a script with bk.AI() to see logs.</Muted>
         : logs.map((entry, i) => <LogEntryRow key={i} entry={entry} />)

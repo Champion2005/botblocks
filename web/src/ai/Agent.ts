@@ -63,7 +63,7 @@ export class Agent {
   totalTokens = 0
   logs: LogEntry[] = []
 
-  private provider: LLMProvider
+  private provider: LLMProvider | null
   private sim: Sim
   private robotId: number
   private camId: number | null
@@ -75,8 +75,11 @@ export class Agent {
   private thinking = false
   /** Per-agent persistent data dict accessible from custom tools/hooks */
   private userData: Record<string, unknown> = {}
+  private _waitingForKey = false
+  /** Called when an auth error occurs so the manager can mark the key rejected */
+  onAuthError: (() => void) | null = null
 
-  constructor(provider: LLMProvider, sim: Sim, robotId: number, camId: number | null, config: Partial<AgentConfig>) {
+  constructor(provider: LLMProvider | null, sim: Sim, robotId: number, camId: number | null, config: Partial<AgentConfig>) {
     this.provider = provider
     this.sim = sim
     this.robotId = robotId
@@ -200,6 +203,18 @@ A heading of 0 rad means facing +X direction.`
     const skipStep = this.callHook(this.config.onBeforeStep!, this.buildToolContext())
     if (skipStep) return
 
+    if (!this.provider) {
+      if (!this._waitingForKey) {
+        this._waitingForKey = true
+        this.logs.push({ type: 'error', time: Date.now(), message: 'Waiting for API key — add one in the settings panel above.' })
+      }
+      return
+    }
+    if (this._waitingForKey) {
+      this._waitingForKey = false
+      this.logs.push({ type: 'status', time: Date.now(), status: 'idle' })
+    }
+
     this.thinking = true
     this.setStatus('thinking')
     this.lastThinkTime = now
@@ -209,8 +224,16 @@ A heading of 0 rad means facing +X direction.`
     } catch (err) {
       console.error('[Agent] think error:', err)
       const msg = err instanceof Error ? err.message : String(err)
-      this.logs.push({ type: 'error', time: Date.now(), message: msg })
-      this.history.push({ role: 'user', content: `Error: ${msg}. Try a different approach.` })
+      // On auth errors, drop provider so agent waits for a valid key
+      if (msg.includes('401') || msg.includes('403') || msg.toLowerCase().includes('unauthorized') || msg.toLowerCase().includes('forbidden')) {
+        this.provider = null
+        this._waitingForKey = true
+        this.logs.push({ type: 'error', time: Date.now(), message: 'Invalid API key — update it in the settings panel above.' })
+        this.onAuthError?.()
+      } else {
+        this.logs.push({ type: 'error', time: Date.now(), message: msg })
+        this.history.push({ role: 'user', content: `Error: ${msg}. Try a different approach.` })
+      }
     } finally {
       this.thinking = false
       if (this.status === 'thinking') this.setStatus('idle')
@@ -252,7 +275,7 @@ A heading of 0 rad means facing +X direction.`
     let iterations = 0
     const maxIter = this.config.maxIterations ?? 5
     while (iterations++ < maxIter) {
-      const response = await this.provider.chat([...this.history], this.toolDefs)
+      const response = await this.provider!.chat([...this.history], this.toolDefs)
       if (response.usage) this.totalTokens += response.usage.prompt_tokens + response.usage.completion_tokens
 
       this.history.push(response.message)
@@ -347,6 +370,14 @@ A heading of 0 rad means facing +X direction.`
     }
 
     return `Error: unknown tool "${name}"`
+  }
+
+  setProvider(provider: LLMProvider) {
+    this.provider = provider
+  }
+
+  get hasProvider(): boolean {
+    return this.provider !== null
   }
 
   private trimHistory(): void {

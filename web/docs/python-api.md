@@ -53,7 +53,7 @@ Initializes the simulation. The `robots` list can contain `Robot` instances or `
 ## AI
 
 ```python
-brain = bk.AI(bot, goal="find the burger", model="gpt-4o-mini")
+brain = bk.AI(bot, goal="find the burger", model="openrouter/free")
 ```
 
 Attaches an LLM-powered brain to a robot. The agent observes the world, reasons via tool-calling LLMs, and acts autonomously.
@@ -64,7 +64,7 @@ Attaches an LLM-powered brain to a robot. The agent observes the world, reasons 
 |-----------|------|---------|-------------|
 | `robot` | Robot | required | Robot to control |
 | `goal` | str | `"explore the environment"` | Natural language goal |
-| `model` | str | `"gpt-4o-mini"` | LLM model identifier |
+| `model` | str | `"openrouter/free"` | LLM model identifier |
 | `think_every` | float | `1.5` | Seconds between LLM calls |
 | `vision` | bool | `False` | Enable camera image in LLM context |
 | `tools` | list[Tool] | `None` | Custom tools the LLM can call |
@@ -88,13 +88,14 @@ async def loop():
 
 ### Model Selection
 
-The `model` string determines which provider is used:
+All models are routed through OpenRouter. Use your OpenRouter API key.
 
-| Pattern | Provider |
-|---------|----------|
-| `gpt-4o-mini`, `gpt-4o` | OpenAI (or OpenRouter if no OpenAI key) |
-| `claude-sonnet-4-20250514` | Anthropic (or OpenRouter fallback) |
-| `openrouter/free`, `meta-llama/...` | OpenRouter (any string with `/`) |
+| Pattern | Example | Notes |
+|---------|---------|-------|
+| `openrouter/free` | `openrouter/free` | Default. Free model selected automatically by OpenRouter |
+| Any OpenRouter model slug | `meta-llama/llama-3.3-70b-instruct:free` | Full model ID from openrouter.ai/models |
+| OpenAI models | `gpt-4o-mini` | Routed via OpenRouter; requires credits |
+| Anthropic models | `claude-3-5-haiku` | Routed via OpenRouter; requires credits |
 
 ## Tool
 

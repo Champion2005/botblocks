@@ -147,7 +147,7 @@ class AI:
             max_iterations=10,
         )
     """
-    def __init__(self, robot, goal="explore the environment", model="gpt-4o-mini",
+    def __init__(self, robot, goal="explore the environment", model="openrouter/free",
                  think_every=1.5, vision=False,
                  tools=None, builtin_tools=None,
                  system_prompt=None, prompt_preamble=None,

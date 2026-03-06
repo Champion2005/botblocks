@@ -1,8 +1,8 @@
 import type { Sim } from '../sim'
 import type { LLMProvider } from './providers'
 import { Agent, type AgentConfig, type LogEntry } from './Agent'
-import { OpenAIProvider } from './openai'
-import { AnthropicProvider } from './anthropic'
+// import { OpenAIProvider } from './openai'
+// import { AnthropicProvider } from './anthropic'
 import { OpenRouterProvider } from './openrouter'
 
 const LS_PREFIX = 'botblocks_apikey_'
@@ -14,7 +14,10 @@ let nextAgentId = 1
 
 export class AgentManager {
   private agents = new Map<number, Agent>()
+  private agentModels = new Map<number, string>()
   private keys: Record<ProviderName, string> = { openai: '', anthropic: '', openrouter: '' }
+  /** Keys that failed auth — don't retry until the user saves a new key */
+  private rejectedKeys = new Set<string>()
 
   constructor() {
     this.loadKeys()
@@ -29,38 +32,48 @@ export class AgentManager {
   setApiKey(provider: ProviderName, key: string) {
     this.keys[provider] = key
     localStorage.setItem(LS_PREFIX + provider, key)
+    // Clear rejected status so agents retry with the new key
+    this.rejectedKeys.delete(provider)
   }
 
   getApiKey(provider: ProviderName): string {
     return this.keys[provider]
   }
 
-  private getProvider(model: string): LLMProvider {
-    // Models with :free suffix or slash → always OpenRouter
-    if (model.includes('/') || model.includes(':free')) {
-      if (this.keys.openrouter) return new OpenRouterProvider(this.keys.openrouter, model)
-      // Try Anthropic direct for claude models without OpenRouter
-      if ((model.startsWith('claude') || model.startsWith('anthropic/')) && this.keys.anthropic) {
-        return new AnthropicProvider(this.keys.anthropic, model.replace('anthropic/', ''))
-      }
-      throw new Error('OpenRouter API key not set. Add it in the settings panel.')
-    }
-    // Plain model names (gpt-4o-mini, claude-sonnet, etc.)
-    if (model.startsWith('claude')) {
-      if (this.keys.anthropic) return new AnthropicProvider(this.keys.anthropic, model)
-      if (this.keys.openrouter) return new OpenRouterProvider(this.keys.openrouter, `anthropic/${model}`)
-      throw new Error('Anthropic or OpenRouter API key required. Add one in the settings panel.')
-    }
-    if (this.keys.openai) return new OpenAIProvider(this.keys.openai, model)
-    if (this.keys.openrouter) return new OpenRouterProvider(this.keys.openrouter, `openai/${model}`)
-    throw new Error('OpenAI or OpenRouter API key required. Add one in the settings panel.')
+  private getProvider(model: string): LLMProvider | null {
+    // Only OpenRouter is active. OpenAI and Anthropic providers are commented out.
+    // All models route through OpenRouter using an OpenRouter API key.
+    if (this.keys.openrouter) return new OpenRouterProvider(this.keys.openrouter, model)
+    return null
+    // --- Disabled: direct OpenAI/Anthropic support ---
+    // if (model.includes('/') || model.includes(':free')) {
+    //   if (this.keys.openrouter) return new OpenRouterProvider(this.keys.openrouter, model)
+    //   if ((model.startsWith('claude') || model.startsWith('anthropic/')) && this.keys.anthropic) {
+    //     return new AnthropicProvider(this.keys.anthropic, model.replace('anthropic/', ''))
+    //   }
+    //   return null
+    // }
+    // if (model.startsWith('claude')) {
+    //   if (this.keys.anthropic) return new AnthropicProvider(this.keys.anthropic, model)
+    //   if (this.keys.openrouter) return new OpenRouterProvider(this.keys.openrouter, `anthropic/${model}`)
+    //   return null
+    // }
+    // if (this.keys.openai) return new OpenAIProvider(this.keys.openai, model)
+    // if (this.keys.openrouter) return new OpenRouterProvider(this.keys.openrouter, `openai/${model}`)
+    // return null
   }
 
   createAgent(sim: Sim, robotId: number, camId: number | null, config: Partial<AgentConfig>): number {
-    const provider = this.getProvider(config.model ?? 'gpt-4o-mini')
+    const model = config.model ?? 'openrouter/free'
+    const provider = this.getProvider(model)
     const id = nextAgentId++
     const agent = new Agent(provider, sim, robotId, camId, config)
+    agent.onAuthError = () => {
+      const pName = this.providerNameForModel(model)
+      this.markKeyRejected(pName)
+    }
     this.agents.set(id, agent)
+    this.agentModels.set(id, model)
     return id
   }
 
@@ -115,7 +128,30 @@ export class AgentManager {
   async stepAgent(agentId: number, dt: number): Promise<void> {
     const agent = this.agents.get(agentId)
     if (!agent) throw new Error(`Agent ${agentId} not found`)
+    // Try to resolve provider if not yet set (but skip if key was already rejected)
+    if (!agent.hasProvider) {
+      const model = this.agentModels.get(agentId)
+      if (model) {
+        const providerName = this.providerNameForModel(model)
+        if (!this.rejectedKeys.has(providerName)) {
+          const provider = this.getProvider(model)
+          if (provider) agent.setProvider(provider)
+        }
+      }
+    }
     await agent.step(dt)
+  }
+
+  /** Mark a provider's current key as rejected (auth failed) */
+  markKeyRejected(provider: ProviderName) {
+    this.rejectedKeys.add(provider)
+  }
+
+  /** Determine which provider name a model string resolves to */
+  private providerNameForModel(model: string): ProviderName {
+    if (model.includes('/') || model.includes(':free')) return 'openrouter'
+    if (model.startsWith('claude')) return this.keys.anthropic ? 'anthropic' : 'openrouter'
+    return this.keys.openai ? 'openai' : 'openrouter'
   }
 
   getAgent(agentId: number): Agent | undefined {
@@ -136,6 +172,7 @@ export class AgentManager {
 
   reset() {
     this.agents.clear()
+    this.agentModels.clear()
     nextAgentId = 1
   }
 }

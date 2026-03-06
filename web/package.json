@@ -52,6 +52,8 @@
   "overrides": {
     "vite-plugin-pyodide": {
       "vite": "$vite"
-    }
+    },
+    "marked": "$marked",
+    "marked-highlight": "$marked-highlight"
   }
 }

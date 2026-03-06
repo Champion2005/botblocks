@@ -30,9 +30,9 @@ botblocks runs entirely in the browser. There is no backend server — LLM API c
 
     ┌─────────────────────────────────────┐
     │ AgentManager                        │
-    │ ├── OpenAIProvider                  │
-    │ ├── AnthropicProvider               │
-    │ ├── OpenRouterProvider              │
+    │ ├── OpenRouterProvider (active)     │
+    │ ├── OpenAIProvider (commented out)  │
+    │ ├── AnthropicProvider (commented out)│
     │ └── Agent[] (observe → think → act) │
     └─────────────────────────────────────┘
 
@@ -84,8 +84,8 @@ botblocks runs entirely in the browser. There is no backend server — LLM API c
 
 ### Dev Server Proxies
 
-Vite proxies LLM API calls to avoid CORS:
+Vite proxies are configured but not currently used (direct OpenAI/Anthropic providers are commented out):
 - `/proxy/openai/*` → `https://api.openai.com/*`
 - `/proxy/anthropic/*` → `https://api.anthropic.com/*`
 
-OpenRouter is called directly (supports browser requests).
+OpenRouter is called directly from the browser (it supports CORS).

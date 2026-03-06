@@ -26,5 +26,15 @@ export default function Editor({ value, onChange }: { value: string, onChange: (
     return () => v.destroy()
   }, [])
 
+  // Sync editor content when value changes externally (e.g. demo switch)
+  useEffect(() => {
+    const v = view.current
+    if (!v) return
+    const current = v.state.doc.toString()
+    if (current !== value) {
+      v.dispatch({ changes: { from: 0, to: current.length, insert: value } })
+    }
+  }, [value])
+
   return <div ref={ref} style={{ overflow: 'auto', flex: '1', display: 'flex', height: '100%' }} />
 }

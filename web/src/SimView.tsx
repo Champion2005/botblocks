@@ -32,7 +32,24 @@ export default function SimView({ simRef }: { simRef: React.MutableRefObject<Sim
     }
   }, [])
 
-  return <div ref={containerRef} style={{ width: '100%', aspectRatio: '16 / 10', minHeight: 300 }}>
+  return <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, position: 'relative' }}>
     <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+    <div style={{
+      position: 'absolute',
+      bottom: 8,
+      right: 8,
+      background: 'rgba(0,0,0,0.55)',
+      color: '#ddd',
+      fontSize: 11,
+      padding: '4px 8px',
+      borderRadius: 4,
+      lineHeight: 1.5,
+      pointerEvents: 'none',
+      userSelect: 'none',
+      fontFamily: 'monospace',
+    }}>
+      <span style={{ color: '#fff', fontWeight: 600 }}>Camera:</span>{' '}
+      Left-click drag: rotate · W/S fwd/back · A/D left/right · Q/E down/up
+    </div>
   </div>
 }

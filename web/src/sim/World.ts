@@ -25,6 +25,10 @@ export class World {
   robots = new Map<number, Robot>()
   objects = new Map<number, SceneObject>()
   navTargets = new Map<number, { x: number; z: number }>()
+  /** Integral heading error accumulator per robot for PID steering */
+  private navIntegral = new Map<number, number>()
+  /** Previous heading error per robot for derivative term */
+  private navPrevErr = new Map<number, number>()
   vision: Vision
   private scene: THREE.Scene
   private renderer: THREE.WebGLRenderer
@@ -112,34 +116,57 @@ export class World {
   }
 
   step(dt: number) {
-    // Run continuous navigation controllers
+    // PID navigation controller — achieves ~0.001m arrival accuracy
+    const ARRIVE_THRESHOLD = 0.001
+    const KP = 3.0   // proportional gain for heading correction
+    const KI = 0.3   // integral gain
+    const KD = 0.8   // derivative gain
+    const MAX_SPEED = 1.5
+    const ROTATE_THRESHOLD = 0.3 // rad — rotate in place above this
+
     for (const [robotId, target] of this.navTargets) {
       const r = this.robots.get(robotId)
       if (!r) { this.navTargets.delete(robotId); continue }
       const dx = target.x - r.state.x
       const dz = target.z - r.state.z
       const dist = Math.sqrt(dx * dx + dz * dz)
-      if (dist < 0.3) {
+
+      if (dist < ARRIVE_THRESHOLD) {
         r.setMotorSpeed('left', 0)
         r.setMotorSpeed('right', 0)
         this.navTargets.delete(robotId)
+        this.navIntegral.delete(robotId)
+        this.navPrevErr.delete(robotId)
         continue
       }
+
       const targetAngle = Math.atan2(dz, dx)
       let err = targetAngle - r.state.heading
       err = ((err + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI
 
-      // Two-phase: rotate in place if angle is large, else drive with proportional steer
-      if (Math.abs(err) > 0.4) {
-        // Rotate in place
-        const turnSpeed = 0.8 * Math.sign(err)
+      // PID for heading error
+      const prevErr = this.navPrevErr.get(robotId) ?? err
+      let integral = (this.navIntegral.get(robotId) ?? 0) + err * dt
+      // Anti-windup: clamp integral
+      integral = Math.max(-2, Math.min(2, integral))
+      const derivative = (err - prevErr) / Math.max(dt, 0.001)
+      this.navIntegral.set(robotId, integral)
+      this.navPrevErr.set(robotId, err)
+
+      if (Math.abs(err) > ROTATE_THRESHOLD) {
+        // Phase 1: Rotate in place when angle error is large
+        const steer = KP * err + KI * integral + KD * derivative
+        const turnSpeed = Math.max(-1, Math.min(1, steer * 0.4))
         r.setMotorSpeed('left', -turnSpeed)
         r.setMotorSpeed('right', turnSpeed)
       } else {
-        const speed = Math.min(1.5, dist) // slow down when close
-        const steer = Math.max(-0.5, Math.min(0.5, err * 1.5))
-        r.setMotorSpeed('left', speed * (1 - steer))
-        r.setMotorSpeed('right', speed * (1 + steer))
+        // Phase 2: Drive with proportional deceleration
+        // Speed ramps down smoothly as we approach: fast far away, creeping near target
+        const speed = Math.min(MAX_SPEED, Math.max(0.05, dist * 2.0))
+        const steer = KP * err + KI * integral + KD * derivative
+        const clampedSteer = Math.max(-0.8, Math.min(0.8, steer * 0.5))
+        r.setMotorSpeed('left', speed * (1 - clampedSteer))
+        r.setMotorSpeed('right', speed * (1 + clampedSteer))
       }
     }
     for (const robot of this.robots.values()) robot.step(dt)
@@ -151,6 +178,8 @@ export class World {
 
   clearNavTarget(robotId: number) {
     this.navTargets.delete(robotId)
+    this.navIntegral.delete(robotId)
+    this.navPrevErr.delete(robotId)
     const r = this.robots.get(robotId)
     if (r) { r.setMotorSpeed('left', 0); r.setMotorSpeed('right', 0) }
   }
@@ -170,6 +199,8 @@ export class World {
     this.robots.clear()
     this.objects.clear()
     this.navTargets.clear()
+    this.navIntegral.clear()
+    this.navPrevErr.clear()
     this.vision.reset()
     nextRobotId = 1
     nextCamId = 1
