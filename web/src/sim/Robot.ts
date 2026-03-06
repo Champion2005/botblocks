@@ -28,6 +28,7 @@ export function makeRobotGroup() {
   for (const z of [0.3, -0.3]) {
     const w = new THREE.Mesh(wheelGeo, wheelMat)
     w.rotation.z = Math.PI / 2
+    w.rotation.y = Math.PI / 2
     w.position.set(0.15, 0.15, z)
     g.add(w)
   }

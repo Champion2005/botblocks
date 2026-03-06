@@ -26,7 +26,8 @@ export class Sim {
   setMotorSpeed(robotId: number, side: 'left' | 'right', speed: number) { this.world.setMotorSpeed(robotId, side, speed) }
   addCamera(robotId: number) { return this.world.addCamera(robotId) }
   snap(camId = 0) { return this.world.snap(camId) }
-  async addBurger() { return this.world.addBurger() }
+  async addBurger(x?: number, z?: number) { return this.world.addBurger(x, z) }
+  getRobotState(robotId: number) { return this.world.getRobotState(robotId) }
   setStepCallback(fn: () => void) { this.stepCallback = fn }
 
   // Renderer delegation

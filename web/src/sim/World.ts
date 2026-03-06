@@ -40,14 +40,20 @@ export class World {
     return this.vision.snap(camId, this.robots, this.renderer, this.scene)
   }
 
-  async addBurger() {
+  async addBurger(x = 3, z = 0) {
     const loader = new GLTFLoader()
     const gltf = await loader.loadAsync('burger.glb')
     const model = gltf.scene
-    model.position.set(3 + Math.random() * 2 - 1, 0, Math.random() * 2 - 1)
+    model.scale.set(0.25, 0.25, 0.25)
+    model.position.set(x, 0, z)
     model.traverse(n => { if (n instanceof THREE.Mesh) n.castShadow = true })
     this.scene.add(model)
     return model
+  }
+
+  getRobotState(robotId: number) {
+    const r = this.robots.get(robotId)
+    return r ? { x: r.state.x, z: r.state.z, heading: r.state.heading } : null
   }
 
   step(dt: number) {

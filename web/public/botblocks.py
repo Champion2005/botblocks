@@ -1,6 +1,8 @@
-import _bridge
+import _bridge, random, math
 
-TestBurger = _bridge.addBurger
+burgX, burgY = random.uniform(-4, 4), random.uniform(-4, -1)
+def Burger():
+    _bridge.addBurger(burgX, burgY)
 
 class Camera:
     def __init__(self): self.id = None
@@ -28,10 +30,16 @@ class Simulator:
 
 class cv:
     class Coords:
-        def __init__(self, x, y): 
+        def __init__(self, x, y):
             self.x = x
             self.y = y
         def find(self, item): return self
     class YOLO:
         def __call__(self, frame):
-            return cv.Coords(1, 0)
+            state = _bridge.getRobotState(1)
+            if not state: return None
+            angle_to_burger = math.atan2(burgY - state.z, burgX - state.x)
+            diff = angle_to_burger - state.heading
+            # normalize to [-pi, pi]
+            diff = (diff + math.pi) % (2 * math.pi) - math.pi
+            return cv.Coords(max(-1, min(1, diff)), 0)

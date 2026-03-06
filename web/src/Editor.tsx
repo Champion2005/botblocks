@@ -17,7 +17,7 @@ export default function Editor({ value, onChange }: { value: string, onChange: (
         extensions: [ oneDark, python(), history(),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           EditorView.updateListener.of(u => { if (u.docChanged) onChange(u.state.doc.toString()) }),
-          EditorView.theme({ '&': { flex: '1' } }),
+          EditorView.theme({ '&': { flex: '1', fontSize: '15px' } }),
         ],
       }),
       parent: ref.current,

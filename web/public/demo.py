@@ -2,7 +2,7 @@ import botblocks as bk
 
 bot = bk.Robot('SimpleCar')
 bot.attach('cam', bk.Camera())
-sim = bk.Simulator([bot, bk.TestBurger])
+sim = bk.Simulator([bot, bk.Burger()])
 
 yolo = bk.cv.YOLO()
 
