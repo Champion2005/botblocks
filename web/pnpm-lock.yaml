@@ -36,8 +36,8 @@ importers:
         specifier: ^0.183.1
         version: 0.183.1
       b44ui:
-        specifier: file:../../ui
-        version: file:../../ui(react@19.2.4)
+        specifier: ^0.0.6
+        version: 0.0.6(react@19.2.4)
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
@@ -987,8 +987,8 @@ packages:
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
 
-  b44ui@file:../../ui:
-    resolution: {directory: ../../ui, type: directory}
+  b44ui@0.0.6:
+    resolution: {integrity: sha512-mo7RNzgp4PLQsLIECZheURyMP4s5/TNUQVDTo/cCRxeyUD69hfT/b7bgtsWf709QciJug0U9ZHez1FzauAG7IA==}
     peerDependencies:
       react: ^19.0.0
 
@@ -2573,7 +2573,7 @@ snapshots:
 
   argparse@2.0.1: {}
 
-  b44ui@file:../../ui(react@19.2.4):
+  b44ui@0.0.6(react@19.2.4):
     dependencies:
       clsx: 2.1.1
       highlight.js: 11.11.1

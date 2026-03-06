@@ -19,7 +19,7 @@
     "@micropython/micropython-webassembly-pyscript": "^1.28.0-preview-233",
     "@tailwindcss/vite": "^4.2.1",
     "@types/three": "^0.183.1",
-    "b44ui": "file:../../ui",
+    "b44ui": "^0.0.6",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.4",
     "marked-highlight": "^2.2.3",
