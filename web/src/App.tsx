@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { App, Btn, Card, Col, D, Grid, Md, Muted, Row } from 'b44ui'
+import { App, Btn, Card, Col, D, Grid, Input, Md, Muted, Row, Select } from 'b44ui'
+import type { ProviderName } from './ai'
 import { loadPyodide } from 'pyodide'
 import { setupPyodideFiles } from 'virtual:pyodide-files'
 import Editor from './Editor'
 import SimView from './SimView'
+import AiLog from './AiLog'
 import { Sim } from './sim'
 
 let raf: number | null = null
@@ -26,8 +28,24 @@ export default () => {
   const [code, setCode] = useState<string | null>(null)
   const simRef = useRef<Sim | null>(null)
   const restartRef = useRef<() => void>(() => { })
+  const [keyProvider, setKeyProvider] = useState<ProviderName>('openai')
+  const [keyValue, setKeyValue] = useState('')
+  const [keySaved, setKeySaved] = useState(false)
+  const [editorOpen, setEditorOpen] = useState(false)
 
-  useEffect(() => { fetch('demo.py').then(r => r.text()).then(setCode) }, [])
+  const saveKey = () => {
+    if (!simRef.current) return
+    simRef.current.setApiKey(keyProvider, keyValue)
+    setKeySaved(true)
+    setTimeout(() => setKeySaved(false), 1500)
+  }
+  const loadKey = (p: ProviderName) => {
+    setKeyProvider(p)
+    setKeyValue(simRef.current?.getApiKey(p) ?? localStorage.getItem('botblocks_apikey_' + p) ?? '')
+    setKeySaved(false)
+  }
+
+  useEffect(() => { fetch('demo_ai.py').then(r => r.text()).then(setCode) }, [])
   useEffect(() => () => stopLoop(), [])
   useEffect(() => { if (code && simRef.current) restartRef.current() }, [code])
 
@@ -51,20 +69,49 @@ export default () => {
     raf = window.requestAnimationFrame(frame)
   }
   restartRef.current = restart
-  return <App width={1000}>
+  return <App width={1200}>
     <Row> <D cn='text-3xl font-bold'> botblocks</D> <Muted cn='text-md'>is a very nice robotics platform</Muted> </Row>
 
-    <Grid cols={2} gap={4}>
-      <Card p={0} gap={0}>
-        <Row p={2}> <Muted grow>bot.py</Muted> <Btn click={restart} sm color="purple">restart</Btn> </Row>
-        {code !== null && <Editor value={code} onChange={setCode} />}
-      </Card>
+    <Row gap={2} p={0}>
+      <Muted>AI Key:</Muted>
+      <Select value={keyProvider} onChange={e => loadKey(e.target.value as ProviderName)}>
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="openrouter">OpenRouter</option>
+      </Select>
+      <Input type="password" placeholder="sk-..." value={keyValue}
+        onChange={e => { setKeyValue(e.target.value); setKeySaved(false) }} grow />
+      <Btn sm color={keySaved ? 'blue' : 'purple'} click={saveKey}>{keySaved ? 'saved' : 'save'}</Btn>
+    </Row>
 
-      <Card p={0} gap={0}>
-        <Row p={2}> <Muted grow>simulator</Muted> <Btn sm ghost>&nbsp;</Btn> </Row>
-        <SimView simRef={simRef} />
-      </Card>
-    </Grid>
+    <div className="bb-layout">
+      {/* Editor panel — collapsible, 1/3 width */}
+      <div className={`bb-editor-panel ${editorOpen ? 'bb-editor-open' : 'bb-editor-collapsed'}`}>
+        <Card p={0} gap={0} cn="h-full">
+          <Row p={2}>
+            <Btn sm ghost click={() => setEditorOpen(!editorOpen)}>
+              {editorOpen ? '▾' : '▸'}
+            </Btn>
+            <Muted grow>bot.py</Muted>
+            <Btn click={restart} sm color="purple">restart</Btn>
+          </Row>
+          {editorOpen && code !== null && (
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+              <Editor value={code} onChange={setCode} />
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Simulation panel — takes remaining space */}
+      <div className="bb-sim-panel">
+        <Card p={0} gap={0}>
+          <Row p={2}> <Muted grow>simulator</Muted> </Row>
+          <SimView simRef={simRef} />
+          <AiLog simRef={simRef} />
+        </Card>
+      </div>
+    </div>
 
     <Md># overview</Md>
     <Grid cols={2}> {/* todo add api overview */}
@@ -74,6 +121,7 @@ export default () => {
       <Col gap={0}> <b>bk.Camera(robot)</b> Basic camera block.</Col>
       <Col gap={0}> <b>bk.cv.YOLO(frame)</b> YOLO is an object detection model, one of many supported.</Col>
       <Col gap={0}> <b>bk.Burger(x, y)</b> Place a burger somewhere for testing, random by default.</Col>
+      <Col gap={0}> <b>bk.AI(robot, goal)</b> Give a robot an LLM brain. Supports OpenAI, Anthropic, and OpenRouter models.</Col>
     </Grid>
 
     <Md>

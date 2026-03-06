@@ -62,6 +62,8 @@ export class Robot {
     const v = (s.left + s.right) / 2
     const omega = s.right - s.left
     s.heading += omega * dt
+    // Normalize heading to [-π, π]
+    s.heading = ((s.heading + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI
     s.x += v * Math.cos(s.heading) * dt
     s.z += v * Math.sin(s.heading) * dt
     this.group.position.set(s.x, 0, s.z)

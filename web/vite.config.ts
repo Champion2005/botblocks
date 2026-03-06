@@ -8,4 +8,18 @@ export default defineConfig({
   optimizeDeps: {
     include: ['highlight.js'],
   },
+  server: {
+    proxy: {
+      '/proxy/openai': {
+        target: 'https://api.openai.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/proxy\/openai/, ''),
+      },
+      '/proxy/anthropic': {
+        target: 'https://api.anthropic.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/proxy\/anthropic/, ''),
+      },
+    },
+  },
 })

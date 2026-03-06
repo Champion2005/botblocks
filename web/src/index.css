@@ -1,3 +1,44 @@
 @import "tailwindcss";
 @source "../node_modules/b44ui/index.tsx";
 @import "b44ui/styles.css";
+
+/* --- botblocks layout --- */
+.bb-layout {
+  display: flex;
+  gap: 1rem;
+  min-height: 500px;
+}
+
+.bb-editor-panel {
+  flex: 0 0 33%;
+  min-width: 0;
+  display: flex;
+  transition: flex-basis 0.2s ease;
+}
+
+.bb-editor-collapsed {
+  flex: 0 0 auto;
+}
+
+.bb-editor-panel > * {
+  width: 100%;
+}
+
+.bb-sim-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .bb-layout {
+    flex-direction: column;
+    min-height: auto;
+  }
+  .bb-editor-panel {
+    flex: 0 0 auto;
+  }
+  .bb-sim-panel {
+    flex: 0 0 auto;
+    min-height: 350px;
+  }
+}

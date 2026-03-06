@@ -32,7 +32,7 @@ export default function SimView({ simRef }: { simRef: React.MutableRefObject<Sim
     }
   }, [])
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%', minHeight: 400 }}>
+  return <div ref={containerRef} style={{ width: '100%', aspectRatio: '16 / 10', minHeight: 300 }}>
     <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
   </div>
 }
